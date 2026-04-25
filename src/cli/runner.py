@@ -29,8 +29,9 @@ def practice(topic: str = typer.Argument(..., help="Topic: arrays, dp, graphs"))
 
     session_attempts = 0
     session_correct = 0
+    session_ended = False
 
-    for _ in range(5):
+    while session_attempts < 5:
         current_problems = get_problems_by_topic(topic)
         if not current_problems:
             typer.echo(f"No problems found for topic: {topic}")
@@ -45,19 +46,18 @@ def practice(topic: str = typer.Argument(..., help="Topic: arrays, dp, graphs"))
         while True:
             start_time = time.time()
             user_answer = typer.prompt("Your solution")
-            end_time = time.time()
+            cleaned_answer = user_answer.strip()
 
-            if user_answer.strip().lower() == "quit":
+            if cleaned_answer == "":
+                typer.echo("Empty input detected. Please enter an answer or type 'quit'.")
+                continue
+
+            if cleaned_answer.lower() == "quit":
                 typer.echo("Ending session early.")
-                accuracy = (session_correct / session_attempts * 100) if session_attempts else 0.0
-                final_assessment = assess_mastery(state)
-                mastery_delta = final_assessment.estimated_mastery - starting_mastery
-                typer.echo("\nSession Summary:")
-                typer.echo(f"  Total attempts: {session_attempts}")
-                typer.echo(f"  Correct answers: {session_correct}")
-                typer.echo(f"  Accuracy: {accuracy:.2f}%")
-                typer.echo(f"  Mastery delta: {mastery_delta:+.2f}")
-                return
+                session_ended = True
+                break
+
+            end_time = time.time()
 
             time_spent = max(0.0, end_time - start_time)
             is_correct = evaluator.check_solution(problem, user_answer)
@@ -92,6 +92,9 @@ def practice(topic: str = typer.Argument(..., help="Topic: arrays, dp, graphs"))
 
             if is_correct:
                 break
+
+        if session_ended:
+            break
 
     accuracy = (session_correct / session_attempts * 100) if session_attempts else 0.0
     final_assessment = assess_mastery(state)
