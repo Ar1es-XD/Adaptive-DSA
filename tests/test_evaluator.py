@@ -24,9 +24,9 @@ def test_check_solution_normalizes_whitespace_and_case():
 def test_get_hint_progression_and_safe_fallback():
     evaluator = ProblemEvaluator()
     problem = _make_problem(["h1", "h2"])
-    assert evaluator.get_hint(problem, 1) == "h1"
-    assert evaluator.get_hint(problem, 2) == "h2"
-    assert evaluator.get_hint(problem, 5) == "h2"
+    assert evaluator.get_hint(problem, 1) == "Hint 1 (Conceptual): h1"
+    assert evaluator.get_hint(problem, 2) == "Hint 2 (Pattern): h2"
+    assert evaluator.get_hint(problem, 5) == "Hint 2 (Pattern): h2"
 
     no_hint_problem = _make_problem([])
     assert evaluator.get_hint(no_hint_problem, 1) == "No hints available"

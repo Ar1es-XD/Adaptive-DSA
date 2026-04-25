@@ -18,7 +18,14 @@ class ProblemEvaluator:
         """Return hint 1 on first failure and hint 2 on second+ failure."""
         if problem.hints:
             idx = max(0, incorrect_attempts - 1)
-            return problem.hints[min(idx, len(problem.hints) - 1)]
+            idx = min(idx, len(problem.hints) - 1)
+            labels = [
+                "Hint 1 (Conceptual)",
+                "Hint 2 (Pattern)",
+                "Hint 3 (Near-solution)",
+            ]
+            label = labels[min(idx, len(labels) - 1)]
+            return f"{label}: {problem.hints[idx]}"
         return "No hints available"
 
     def get_explanation(self, problem: Problem) -> str:
