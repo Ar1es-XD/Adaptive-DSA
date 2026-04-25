@@ -5,7 +5,9 @@ from src.models.learner import AttemptRecord, LearnerSkillState, SkillAssessment
 
 DECAY_CONSTANT = 604800  # 1 week in seconds
 MIN_CONFIDENCE = 10
+MIN_MASTERY = 5
 MAX_MASTERY = 100
+MAX_VARIANCE = 225
 
 
 def initialize_skill_state(skill_id: str) -> LearnerSkillState:
@@ -50,10 +52,12 @@ def bayesian_update(
         # Consistent = reduce uncertainty
         new_variance = prior_variance * 0.85
     else:
-        # Inconsistent = increase uncertainty
-        new_variance = prior_variance * 1.1
+        # Allow growth on failure, but keep it controlled.
+        new_variance = prior_variance * 1.05
+        # Recover confidence slowly even on failures to prevent permanent collapse.
+        new_variance = new_variance * 0.99
 
-    new_variance = max(10, new_variance)  # Min uncertainty
+    new_variance = max(10, min(MAX_VARIANCE, new_variance))
 
     return new_mu, new_variance
 
@@ -77,10 +81,11 @@ def record_attempt(state: LearnerSkillState, attempt: AttemptRecord) -> LearnerS
         weight_total += weight
 
     weighted_success_ratio = weighted_sum / weight_total if weight_total > 0 else 0.5
-    computed_mu = state.mastery_mu + (weighted_success_ratio - 0.5) * 20
+    boost = 25 if state.mastery_mu < 20 and attempt.success else 0
+    computed_mu = state.mastery_mu + (weighted_success_ratio - 0.5) * 20 + boost
     # Smooth updates to avoid abrupt early jumps.
     new_mu = (0.7 * state.mastery_mu) + (0.3 * computed_mu)
-    new_mu = max(0, min(MAX_MASTERY, new_mu))
+    new_mu = max(MIN_MASTERY, min(MAX_MASTERY, new_mu))
 
     # Bayesian variance update
     _, variance_delta = bayesian_update(
@@ -94,7 +99,7 @@ def record_attempt(state: LearnerSkillState, attempt: AttemptRecord) -> LearnerS
     # If gap since last update > 7 days, increase uncertainty
     days_since_update = (now - state.last_updated) / 86400
     if days_since_update > 7:
-        new_variance = min(225, new_variance * 1.3)
+        new_variance = min(MAX_VARIANCE, new_variance * 1.1)
 
     return LearnerSkillState(
         skill_id=state.skill_id,

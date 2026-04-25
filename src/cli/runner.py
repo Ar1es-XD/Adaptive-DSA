@@ -46,6 +46,11 @@ def practice(topic: str = typer.Argument(..., help="Topic: arrays, dp, graphs"))
         while True:
             start_time = time.time()
             user_answer = typer.prompt("Your solution")
+
+            if "\n" in user_answer:
+                typer.echo("Multi-line input detected. Please enter a single-line answer.")
+                continue
+
             cleaned_answer = user_answer.strip()
 
             if cleaned_answer == "":
