@@ -77,7 +77,7 @@ def record_attempt(state: LearnerSkillState, attempt: AttemptRecord) -> LearnerS
         weight_total += weight
 
     weighted_success_ratio = weighted_sum / weight_total if weight_total > 0 else 0.5
-    computed_mu = 50 + (weighted_success_ratio * 50)  # Scale to 0-100
+    computed_mu = state.mastery_mu + (weighted_success_ratio - 0.5) * 20
     # Smooth updates to avoid abrupt early jumps.
     new_mu = (0.7 * state.mastery_mu) + (0.3 * computed_mu)
     new_mu = max(0, min(MAX_MASTERY, new_mu))
@@ -109,6 +109,8 @@ def record_attempt(state: LearnerSkillState, attempt: AttemptRecord) -> LearnerS
 def assess_mastery(state: LearnerSkillState) -> SkillAssessment:
     """Calculate current assessment (NO state mutation)."""
     confidence = max(0, min(100, 100 - (state.mastery_variance / 2.25)))
+    if state.attempt_count < 3:
+        confidence = min(confidence, 25)
     if state.attempt_count < 5:
         confidence = min(confidence, 40)
     ready_to_advance = state.mastery_mu > 80 and confidence > 75

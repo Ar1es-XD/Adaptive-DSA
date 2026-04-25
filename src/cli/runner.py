@@ -17,20 +17,25 @@ evaluator = ProblemEvaluator()
 @app.command()
 def practice(topic: str = typer.Argument(..., help="Topic: arrays, dp, graphs")):
     """Interactive practice session."""
-    problems = get_problems_by_topic(topic)
-    if not problems:
+    initial_problems = get_problems_by_topic(topic)
+    if not initial_problems:
         typer.echo(f"No problems found for topic: {topic}")
         return
 
     # Load or init skill state
     state = db.load_skill_state(topic) or initialize_skill_state(topic)
     assessment = assess_mastery(state)
+    starting_mastery = assessment.estimated_mastery
 
     session_attempts = 0
     session_correct = 0
 
     for _ in range(5):
-        problem = select_next_problem(assessment, problems)
+        current_problems = get_problems_by_topic(topic)
+        if not current_problems:
+            typer.echo(f"No problems found for topic: {topic}")
+            break
+        problem = select_next_problem(assessment, current_problems)
         incorrect_attempts = 0
 
         typer.echo(f"\nProblem: {problem.title} (Difficulty: {problem.difficulty}/10)")
@@ -45,10 +50,13 @@ def practice(topic: str = typer.Argument(..., help="Topic: arrays, dp, graphs"))
             if user_answer.strip().lower() == "quit":
                 typer.echo("Ending session early.")
                 accuracy = (session_correct / session_attempts * 100) if session_attempts else 0.0
+                final_assessment = assess_mastery(state)
+                mastery_delta = final_assessment.estimated_mastery - starting_mastery
                 typer.echo("\nSession Summary:")
                 typer.echo(f"  Total attempts: {session_attempts}")
                 typer.echo(f"  Correct answers: {session_correct}")
                 typer.echo(f"  Accuracy: {accuracy:.2f}%")
+                typer.echo(f"  Mastery delta: {mastery_delta:+.2f}")
                 return
 
             time_spent = max(0.0, end_time - start_time)
@@ -86,10 +94,13 @@ def practice(topic: str = typer.Argument(..., help="Topic: arrays, dp, graphs"))
                 break
 
     accuracy = (session_correct / session_attempts * 100) if session_attempts else 0.0
+    final_assessment = assess_mastery(state)
+    mastery_delta = final_assessment.estimated_mastery - starting_mastery
     typer.echo("\nSession Summary:")
     typer.echo(f"  Total attempts: {session_attempts}")
     typer.echo(f"  Correct answers: {session_correct}")
     typer.echo(f"  Accuracy: {accuracy:.2f}%")
+    typer.echo(f"  Mastery delta: {mastery_delta:+.2f}")
 
 
 @app.command()
