@@ -4,22 +4,70 @@ import time
 from src.models.learner import AttemptRecord, LearnerSkillState, SkillAssessment
 
 DECAY_CONSTANT = 604800  # 1 week in seconds
+FORGETTING_DECAY_K = 1 / (60 * 60 * 24 * 90)  # ~90-day slow decay
 MIN_CONFIDENCE = 10
 MIN_MASTERY = 5
 MAX_MASTERY = 100
 MAX_VARIANCE = 225
+BASE_REVIEW_INTERVAL_SECONDS = 86400.0
+MAX_REVIEW_INTERVAL_SECONDS = 86400.0 * 30
 
 
 def initialize_skill_state(skill_id: str) -> LearnerSkillState:
     """Init new skill (total uncertainty)."""
+    now = time.time()
     return LearnerSkillState(
         skill_id=skill_id,
         mastery_mu=50.0,
         mastery_variance=225.0,  # Std dev = 15
-        last_updated=time.time(),
+        last_updated=now,
+        last_seen_timestamp=now,
+        review_interval_seconds=BASE_REVIEW_INTERVAL_SECONDS,
         attempt_count=0,
         recent_attempts=[],
     )
+
+
+def apply_forgetting(state: LearnerSkillState, current_time: float) -> tuple[LearnerSkillState, float]:
+    """Apply exponential forgetting based on time since last seen."""
+    time_since_last_seen = max(0.0, current_time - state.last_seen_timestamp)
+    if time_since_last_seen == 0:
+        return state, 0.0
+
+    decayed_mastery = state.mastery_mu * math.exp(-FORGETTING_DECAY_K * time_since_last_seen)
+    decayed_mastery = max(MIN_MASTERY, min(MAX_MASTERY, decayed_mastery))
+    decay_applied = max(0.0, state.mastery_mu - decayed_mastery)
+
+    return (
+        LearnerSkillState(
+            skill_id=state.skill_id,
+            mastery_mu=decayed_mastery,
+            mastery_variance=state.mastery_variance,
+            last_updated=state.last_updated,
+            last_seen_timestamp=current_time,
+            review_interval_seconds=state.review_interval_seconds,
+            attempt_count=state.attempt_count,
+            recent_attempts=state.recent_attempts,
+        ),
+        decay_applied,
+    )
+
+
+def is_due_for_review(state: LearnerSkillState, current_time: float) -> bool:
+    """Return whether this skill is due for review now."""
+    return current_time >= (state.last_seen_timestamp + state.review_interval_seconds)
+
+
+def time_to_next_review_seconds(state: LearnerSkillState, current_time: float) -> float:
+    """Seconds remaining until review is due."""
+    return max(0.0, (state.last_seen_timestamp + state.review_interval_seconds) - current_time)
+
+
+def update_review_interval(current_interval: float, success: bool) -> float:
+    """Simple spaced-repetition interval update."""
+    if success:
+        return min(MAX_REVIEW_INTERVAL_SECONDS, max(BASE_REVIEW_INTERVAL_SECONDS, current_interval) * 2)
+    return BASE_REVIEW_INTERVAL_SECONDS
 
 
 def decay_factor(attempt_timestamp: float, current_time: float) -> float:
@@ -106,6 +154,8 @@ def record_attempt(state: LearnerSkillState, attempt: AttemptRecord) -> LearnerS
         mastery_mu=new_mu,
         mastery_variance=new_variance,
         last_updated=now,
+        last_seen_timestamp=now,
+        review_interval_seconds=update_review_interval(state.review_interval_seconds, attempt.success),
         attempt_count=state.attempt_count + 1,
         recent_attempts=new_recent,
     )

@@ -2,10 +2,17 @@ import time
 
 import typer
 
-from src.data.loader import get_problems_by_topic
+from src.data.loader import get_problems_by_topic, load_problems
 from src.db.storage import LearnerDB
 from src.engine.evaluator import ProblemEvaluator
-from src.engine.learner_model import assess_mastery, initialize_skill_state, record_attempt
+from src.engine.learner_model import (
+    apply_forgetting,
+    assess_mastery,
+    initialize_skill_state,
+    is_due_for_review,
+    record_attempt,
+    time_to_next_review_seconds,
+)
 from src.engine.policy import select_next_problem
 from src.models.learner import AttemptRecord
 
@@ -24,8 +31,16 @@ def practice(topic: str = typer.Argument(..., help="Topic: arrays, dp, graphs"))
 
     # Load or init skill state
     state = db.load_skill_state(topic) or initialize_skill_state(topic)
+    now = time.time()
+    state, decay_applied = apply_forgetting(state, now)
+    db.save_skill_state(state)
+
     assessment = assess_mastery(state)
     starting_mastery = assessment.estimated_mastery
+    typer.echo(f"Decay applied: -{decay_applied:.2f} mastery")
+    typer.echo(
+        f"Next review in {time_to_next_review_seconds(state, now) / 3600:.2f} hours"
+    )
 
     session_attempts = 0
     session_correct = 0
@@ -36,7 +51,7 @@ def practice(topic: str = typer.Argument(..., help="Topic: arrays, dp, graphs"))
         if not current_problems:
             typer.echo(f"No problems found for topic: {topic}")
             break
-        problem = select_next_problem(assessment, current_problems)
+        problem = select_next_problem(assessment, current_problems, state=state, current_time=time.time())
         incorrect_attempts = 0
 
         typer.echo(f"\nProblem: {problem.title} (Difficulty: {problem.difficulty}/10)")
@@ -94,6 +109,9 @@ def practice(topic: str = typer.Argument(..., help="Topic: arrays, dp, graphs"))
                 f"(Confidence: {assessment.confidence}%)"
             )
             typer.echo(f"Ready to advance: {assessment.ready_to_advance}")
+            typer.echo(
+                f"Next review in {time_to_next_review_seconds(state, end_time) / 3600:.2f} hours"
+            )
 
             if is_correct:
                 break
@@ -120,12 +138,62 @@ def status(topic: str = typer.Argument(...)):
         return
 
     assessment = assess_mastery(state)
+    now = time.time()
     typer.echo(f"\n{topic.upper()} Status:")
     typer.echo(f"  Mastery: {assessment.estimated_mastery}%")
     typer.echo(f"  Confidence: {assessment.confidence}%")
     typer.echo(f"  Attempts: {state.attempt_count}")
     typer.echo(f"  Ready to advance: {assessment.ready_to_advance}")
     typer.echo(f"  Next difficulty: {assessment.next_recommended_difficulty}/10")
+    typer.echo(f"  Due for review: {is_due_for_review(state, now)}")
+    typer.echo(f"  Next review in: {time_to_next_review_seconds(state, now) / 3600:.2f} hours")
+
+
+@app.command()
+def review():
+    """Show skills and problems due for review, prioritizing weak skills."""
+    all_problems = load_problems()
+    topics = sorted({p.topic for p in all_problems})
+    now = time.time()
+    review_rows: list[tuple[str, float, bool, float, str]] = []
+
+    for topic in topics:
+        topic_problems = [p for p in all_problems if p.topic == topic]
+        if not topic_problems:
+            continue
+
+        state = db.load_skill_state(topic) or initialize_skill_state(topic)
+        state, decay_applied = apply_forgetting(state, now)
+        db.save_skill_state(state)
+
+        assessment = assess_mastery(state)
+        due = is_due_for_review(state, now)
+        next_problem = select_next_problem(assessment, topic_problems, state=state, current_time=now)
+        review_rows.append(
+            (
+                topic,
+                assessment.estimated_mastery,
+                due,
+                time_to_next_review_seconds(state, now) / 3600,
+                next_problem.title,
+            )
+        )
+
+        typer.echo(f"Decay applied for {topic}: -{decay_applied:.2f} mastery")
+
+    if not review_rows:
+        typer.echo("No review data available yet")
+        return
+
+    review_rows.sort(key=lambda row: (not row[2], row[1]))
+
+    typer.echo("\nReview Queue (due first, weaker skills first):")
+    for topic, mastery, due, next_hours, next_problem in review_rows:
+        due_text = "DUE" if due else "UPCOMING"
+        typer.echo(
+            f"- {topic}: {due_text}, mastery={mastery:.2f}, "
+            f"next review in {next_hours:.2f}h, next problem='{next_problem}'"
+        )
 
 
 if __name__ == "__main__":

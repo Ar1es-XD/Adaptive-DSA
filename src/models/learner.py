@@ -22,6 +22,8 @@ class LearnerSkillState(BaseModel):
     mastery_mu: float = 50.0  # Mean (0-100)
     mastery_variance: float = 225.0  # Uncertainty
     last_updated: float  # Unix timestamp
+    last_seen_timestamp: float
+    review_interval_seconds: float = 86400.0
     attempt_count: int = 0
     recent_attempts: List[AttemptRecord] = Field(default_factory=list)  # Last 20
 
