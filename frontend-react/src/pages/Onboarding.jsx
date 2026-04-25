@@ -47,7 +47,7 @@ export default function OnboardingFlow() {
         {step === 1 && <SignupForm onComplete={handleSignupComplete} />}
         {step === 2 && <WaiverForm onComplete={handleWaiverComplete} />}
         {step === 3 && <DiagnosticTest userId={userData.userProfile?.user_id} onComplete={handleTestComplete} />}
-        {step === 4 && <PlanDisplay plan={userData.learningPlan} />}
+        {step === 4 && <PlanDisplay plan={userData.learningPlan} userData={userData} />}
       </div>
     </div>
   );

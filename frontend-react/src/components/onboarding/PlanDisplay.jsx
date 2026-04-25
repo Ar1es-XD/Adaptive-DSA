@@ -1,6 +1,8 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 
-export default function PlanDisplay({ plan }) {
+export default function PlanDisplay({ plan, userData }) {
+  const navigate = useNavigate();
   if (!plan) return <div>Loading your plan...</div>;
 
   const getAbilityLabel = (level) => {
@@ -9,8 +11,12 @@ export default function PlanDisplay({ plan }) {
   };
 
   const startLearning = () => {
-    // In actual implementation, redirect to dashboard or begin lesson!
-    alert("Navigating to actual practice dashboard...");
+    // Save user_id to localStorage so Dashboard can find it
+    if (userData?.userProfile?.user_id) {
+      localStorage.setItem('user_id', userData.userProfile.user_id);
+    }
+    // Navigate to dashboard
+    navigate('/dashboard');
   };
 
   return (
