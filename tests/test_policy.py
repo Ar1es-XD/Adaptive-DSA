@@ -1,5 +1,7 @@
+import time
+
 from src.engine.policy import select_next_problem
-from src.models.learner import Problem, SkillAssessment
+from src.models.learner import LearnerSkillState, Problem, SkillAssessment
 
 
 def _problems():
@@ -62,3 +64,21 @@ def test_select_next_problem_exploration_can_choose_full_pool(monkeypatch):
 
     selected = select_next_problem(_assessment(), _problems())
     assert selected.problem_id == "far"
+
+
+def test_select_next_problem_prioritizes_due_review(monkeypatch):
+    now = time.time()
+    state = LearnerSkillState(
+        skill_id="arrays",
+        mastery_mu=35.0,
+        mastery_variance=120.0,
+        last_updated=now - 100,
+        last_seen_timestamp=now - (86400 * 2),
+        review_interval_seconds=86400.0,
+        attempt_count=5,
+        recent_attempts=[],
+    )
+    monkeypatch.setattr("src.engine.policy.random.choice", lambda seq: seq[0])
+
+    selected = select_next_problem(_assessment(), _problems(), state=state, current_time=now)
+    assert selected.difficulty <= _assessment().next_recommended_difficulty
