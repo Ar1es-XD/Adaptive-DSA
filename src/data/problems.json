@@ -1,0 +1,54 @@
+[
+    {
+        "problem_id": "array_001",
+        "title": "Two Sum",
+        "description": "Find two numbers that add to target",
+        "topic": "arrays",
+        "difficulty": 2,
+        "pattern": "twoPointer",
+        "expected_output": "indices 0 and 1",
+        "hints": [
+            "Try using a hash map to track complements.",
+            "For each number x, check if target - x was seen earlier."
+        ]
+    },
+    {
+        "problem_id": "array_002",
+        "title": "Container With Most Water",
+        "description": "Find max area between two lines",
+        "topic": "arrays",
+        "difficulty": 4,
+        "pattern": "twoPointer",
+        "expected_output": "49",
+        "hints": [
+            "Use two pointers from both ends.",
+            "Move the pointer at the shorter line to seek a larger area."
+        ]
+    },
+    {
+        "problem_id": "dp_001",
+        "title": "Coin Change",
+        "description": "Min coins to make amount",
+        "topic": "dp",
+        "difficulty": 5,
+        "pattern": "dp",
+        "expected_output": "3",
+        "hints": [
+            "Build answers bottom-up from 0 to amount.",
+            "dp[a] = min(dp[a], dp[a - coin] + 1) for each coin."
+        ]
+    },
+    {
+        "problem_id": "graph_001",
+        "title": "Number of Islands",
+        "description": "Count islands in grid",
+        "topic": "graphs",
+        "difficulty": 6,
+        "pattern": "dfs",
+        "expected_output": "3",
+        "hints": [
+            "Traverse each unvisited land cell.",
+            "Use DFS or BFS to mark the full connected component."
+        ]
+    }
+]
