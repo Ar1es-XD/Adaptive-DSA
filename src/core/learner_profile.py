@@ -257,8 +257,9 @@ def select_next_concept(
     
     for concept_id in available_concepts:
         state = profile.get_knowledge_state(concept_id)
-        metrics = profile.concept_metrics.get(concept_id)
-        last_time = metrics.last_attempt.timestamp() if metrics else 0.0
+        # Convert datetime to timestamp safely using standard timetuple
+        import time
+        last_time = time.mktime(metrics.last_attempt.timetuple()) if metrics else 0.0
         
         tuple_data = (last_time, concept_id)
         if state == KnowledgeState.STRUGGLING:

@@ -34,7 +34,6 @@ export default function DiagnosticTest({ userId, onComplete }) {
           user_id: userId,
           problem_id: problem.id,
           submitted_code: code,
-          execution_results: { t1: true, t2: code.length > 5 }, // basic mock correctness
           time_spent_seconds: 180 - timeLeft,
         }),
       });
@@ -59,6 +58,7 @@ export default function DiagnosticTest({ userId, onComplete }) {
       }
     } catch (err) {
       console.error(err);
+      alert("Failed to submit attempt: " + err.message);
       setSubmitting(false);
     }
   };

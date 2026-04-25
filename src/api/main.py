@@ -13,8 +13,25 @@ from src.services.tutor_service import (
 )
 
 from src.core.onboarding import UserProfile, DiagnosticTestResult, AbilityMap, CustomLearningPlan
-from src.core.diagnostic_test import score_diagnostic_attempt, analyze_diagnostic_results, generate_custom_plan
-from typing import Dict
+from src.core.diagnostic_test import (
+    score_diagnostic_attempt, 
+    analyze_diagnostic_results, 
+    generate_custom_plan,
+    DIAGNOSTIC_PROBLEMS
+)
+from src.db.onboarding_db import (
+    save_user_profile,
+    get_user_profile,
+    save_diagnostic_result,
+    get_diagnostic_result,
+    save_ability_map,
+    get_ability_map,
+    save_learning_plan,
+    get_learning_plan
+)
+from src.core.sandbox import run_tests_on_code
+from fastapi.encoders import jsonable_encoder
+from typing import Dict, Optional
 import uuid
 
 
@@ -75,13 +92,7 @@ def recommend():
 def analytics_summary():
     return get_analytics_summary()
 
-# --- ONBOARDING ENDPOINTS ---
-
-# In-memory stores for onboarding state
-_users = {}
-_diagnostics = {}
-_ability_maps = {}
-_plans = {}
+# Onboarding State operates on SQLite via onboarding_db.py
 
 class SignupRequest(BaseModel):
     email: str
@@ -100,34 +111,43 @@ def signup(req: SignupRequest):
         years_coding=req.years_coding,
         dsa_experience=req.dsa_experience
     )
-    _users[user_id] = profile
-    _diagnostics[user_id] = DiagnosticTestResult(user_id=user_id)
-    return {"user_id": user_id, "userProfile": profile, "auth_token": "mock_token"}
+    save_user_profile(profile)
+    save_diagnostic_result(DiagnosticTestResult(user_id=user_id))
+    return jsonable_encoder({"user_id": user_id, "userProfile": profile, "auth_token": "mock_token"})
 
 class DiagnosticSubmitRequest(BaseModel):
     user_id: str
     problem_id: str
     submitted_code: str
-    execution_results: Dict[str, bool]
     time_spent_seconds: int
 
 @app.post("/api/diagnostic/submit-attempt")
 def diagnostic_submit(req: DiagnosticSubmitRequest):
+    # Lookup problem tests
+    prob_def = next((p for p in DIAGNOSTIC_PROBLEMS if p["id"] == req.problem_id), None)
+    if not prob_def:
+        return {"error": "Invalid problem ID"}
+        
+    # Execute actual code
+    test_cases = prob_def.get("test_cases", [])
+    execution_results = run_tests_on_code(req.submitted_code, test_cases)
+    
     result = score_diagnostic_attempt(
         req.user_id, 
         req.problem_id, 
         req.submitted_code, 
-        req.execution_results, 
+        execution_results, 
         req.time_spent_seconds
     )
     
-    # Save into memory
-    diag = _diagnostics.get(req.user_id)
+    # Save into SQLite
+    diag = get_diagnostic_result(req.user_id)
     if diag:
         diag.scores[req.problem_id] = result["combined_score"]
         diag.time_per_problem[req.problem_id] = req.time_spent_seconds
+        save_diagnostic_result(diag)
         
-    return {"score": result["combined_score"], "feedback": result}
+    return jsonable_encoder({"score": result["combined_score"], "feedback": result, "execution_results": execution_results})
 
 class DiagnosticFinalizeRequest(BaseModel):
     user_id: str
@@ -135,22 +155,22 @@ class DiagnosticFinalizeRequest(BaseModel):
 
 @app.post("/api/diagnostic/finalize")
 def diagnostic_finalize(req: DiagnosticFinalizeRequest):
-    diag = _diagnostics.get(req.user_id)
-    profile = _users.get(req.user_id)
+    diag = get_diagnostic_result(req.user_id)
+    profile = get_user_profile(req.user_id)
     ability_map = analyze_diagnostic_results(diag, profile)
-    _ability_maps[req.user_id] = ability_map
-    return {"abilityMap": ability_map, "confidence_score": ability_map.confidence_score}
+    save_ability_map(ability_map)
+    return jsonable_encoder({"abilityMap": ability_map, "confidence_score": ability_map.confidence_score})
 
 class PlanGenerateRequest(BaseModel):
     user_id: str
 
 @app.post("/api/learning-plan/generate")
 def learning_plan_generate(req: PlanGenerateRequest):
-    profile = _users.get(req.user_id)
-    ability_map = _ability_maps.get(req.user_id)
+    profile = get_user_profile(req.user_id)
+    ability_map = get_ability_map(req.user_id)
     plan = generate_custom_plan(ability_map, profile)
-    _plans[req.user_id] = plan
-    return {"learningPlan": plan}
+    save_learning_plan(plan)
+    return jsonable_encoder({"learningPlan": plan})
 
 class DashboardInitRequest(BaseModel):
     user_id: str
@@ -158,8 +178,10 @@ class DashboardInitRequest(BaseModel):
 @app.post("/api/dashboard/initialize")
 def dashboard_initialize(req: DashboardInitRequest):
     # Return learner state and first problem from plan
-    plan = _plans.get(req.user_id)
+    plan = get_learning_plan(req.user_id)
+    if not plan:
+        return {"error": "Plan not found"}
     # mock problem extraction
     first_target_concept = plan.phase_1_concepts[0] if plan.phase_1_concepts else "arrays"
     # Call service state
-    return {"first_problem": first_target_concept, "learner_profile_state": {}}
+    return jsonable_encoder({"first_problem": first_target_concept, "learner_profile_state": {}})
