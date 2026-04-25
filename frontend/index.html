@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Adaptive DSA Tutor</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            margin: 2rem;
+            max-width: 820px;
+        }
+
+        .toolbar {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+            flex-wrap: wrap;
+            margin-bottom: 0.75rem;
+        }
+
+        .panel {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-top: 0.75rem;
+        }
+
+        textarea {
+            width: 100%;
+            min-height: 84px;
+            resize: vertical;
+        }
+
+        button,
+        select,
+        textarea {
+            padding: 0.5rem;
+            font: inherit;
+        }
+
+        #feedback p,
+        #progress p {
+            margin: 0.35rem 0;
+        }
+    </style>
+</head>
+
+<body>
+    <div>
+        <h2>Adaptive Tutor</h2>
+
+        <div class="toolbar">
+            <label for="topic">Topic:</label>
+            <select id="topic">
+                <option value="arrays">arrays</option>
+                <option value="dp">dp</option>
+                <option value="graphs">graphs</option>
+            </select>
+            <button id="startBtn" onclick="startSession()">Start Practice</button>
+            <button id="reviewBtn" onclick="loadReview()">Review</button>
+            <button id="recommendBtn" onclick="loadRecommend()">Recommend</button>
+        </div>
+
+        <div id="problem-panel" class="panel">
+            <h3>Problem Panel</h3>
+            <div id="problem-box">Press Start Practice to begin.</div>
+        </div>
+
+        <div id="answer-panel" class="panel">
+            <h3>Answer Panel</h3>
+            <textarea id="answer" placeholder="Type your answer"></textarea>
+            <div>
+                <button id="submitBtn" onclick="submitAnswer()">Submit</button>
+            </div>
+        </div>
+
+        <div id="feedback-progress-panel" class="panel">
+            <h3>Feedback + Progress Panel</h3>
+            <div id="feedback"></div>
+            <div id="progress"></div>
+        </div>
+    </div>
+
+    <script>
+        const apiBase = window.location.origin && window.location.origin.startsWith("http")
+            ? window.location.origin
+            : "http://127.0.0.1:8000";
+
+        let currentProblemId = null;
+        let isSubmitting = false;
+
+        function setSubmitLoading(isLoading) {
+            const btn = document.getElementById("submitBtn");
+            btn.disabled = isLoading;
+            btn.textContent = isLoading ? "Submitting..." : "Submit";
+            isSubmitting = isLoading;
+        }
+
+        function renderProblem(p) {
+            document.getElementById("problem-box").innerHTML = `
+                <h3>${p.title}</h3>
+                <p><b>Difficulty:</b> ${p.difficulty}</p>
+                <p>${p.description}</p>
+            `;
+        }
+
+        function renderFeedback(f) {
+            document.getElementById("feedback").innerHTML = `
+                <p>${f.correct ? "Correct" : "Incorrect"}</p>
+                <p>${f.hint || ""}</p>
+            `;
+        }
+
+        function renderProgress(f) {
+            document.getElementById("progress").innerHTML = `
+                <p>Mastery: ${f.mastery ?? "-"}</p>
+                <p>Confidence: ${f.confidence ?? "-"}</p>
+            `;
+        }
+
+        async function startSession() {
+            const topic = document.getElementById("topic").value;
+            const res = await fetch(`${apiBase}/practice/start`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ topic })
+            });
+
+            const data = await res.json();
+            if (data.error || !data.problem) {
+                document.getElementById("feedback").innerHTML = `<p>${data.error || "Unable to start session"}</p>`;
+                return;
+            }
+
+            currentProblemId = data.problem.problem_id;
+            renderProblem(data.problem);
+            document.getElementById("answer").value = "";
+            document.getElementById("answer").focus();
+            document.getElementById("feedback").innerHTML = "";
+            document.getElementById("progress").innerHTML = "";
+        }
+
+        async function submitAnswer() {
+            if (!currentProblemId || isSubmitting) {
+                return;
+            }
+
+            const answer = document.getElementById("answer").value;
+            setSubmitLoading(true);
+
+            try {
+                const res = await fetch(`${apiBase}/practice/submit`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        problem_id: currentProblemId,
+                        answer: answer
+                    })
+                });
+
+                const data = await res.json();
+                if (data.error) {
+                    document.getElementById("feedback").innerHTML = `<p>${data.error}</p>`;
+                    return;
+                }
+
+                const feedback = data.feedback || {
+                    correct: data.correct,
+                    hint: data.hint,
+                    mastery: data.assessment ? data.assessment.estimated_mastery : null,
+                    confidence: data.assessment ? data.assessment.confidence : null,
+                };
+
+                renderFeedback(feedback);
+                renderProgress(feedback);
+
+                if (data.next_problem) {
+                    currentProblemId = data.next_problem.problem_id;
+                    renderProblem(data.next_problem);
+                    document.getElementById("answer").value = "";
+                    document.getElementById("answer").focus();
+                }
+            } finally {
+                setSubmitLoading(false);
+            }
+        }
+
+        async function loadReview() {
+            const res = await fetch(`${apiBase}/review`);
+            const data = await res.json();
+
+            document.getElementById("problem-box").innerHTML =
+                data.map((p) => `
+                    <div>
+                        <b>${p.problem_id}</b> - ${p.status}
+                        (${p.interval_days ?? p.interval ?? "-"} days)
+                    </div>
+                `).join("");
+        }
+
+        async function loadRecommend() {
+            const res = await fetch(`${apiBase}/recommend`);
+            const data = await res.json();
+
+            document.getElementById("problem-box").innerHTML =
+                data.map((p) => `<div>${p.problem ? p.problem.problem_id : p.problem_id}</div>`).join("");
+        }
+
+        document.getElementById("answer").addEventListener("keydown", (e) => {
+            if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                submitAnswer();
+            }
+        });
+    </script>
+</body>
+
+</html>
